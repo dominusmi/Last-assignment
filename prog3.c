@@ -122,10 +122,12 @@ int main( int argc, char** argv ){
 		cleanMemory( &g, output);
 	}
 
+	init_band_mat( &mMat, g.length-1, g.length, g.length );
+
 
 	for( i=0; i<g.length2; i++ ){
-		temp = floor((double)i/g.length2);
-		setv(&mMat, temp, i%g.length2, g.M[i]);
+		temp = floor((double)i/g.length);
+		setv(&mMat, temp, i%g.length, g.M[i]);
 	}
 
 	print_mat( &mMat );
