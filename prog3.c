@@ -52,6 +52,7 @@ struct Grid{
 	double* E;
 	double* E_next;
 	double* M;
+	double* dE;
 };
 typedef struct Grid Grid;
 
@@ -65,13 +66,13 @@ int initialiseGrid( Grid *g, Params p );
 int loadCoarseFunctions( Grid *g, Params p );
 
 /* Finds the next value of the Energy */
-void calculateE( Grid *g, Params p );
+void calculateE( Grid *g, Params p, double dt);
 
 /* Finds the second part of the E eqn, gamma/2 * tanh(..) */
 double calculateAlpha( long i, Params p, double* T );
 
 /* Frees memory */
-void cleanMemory( Grid *g, FILE* output );
+void cleanMemory( Grid *g );
 
 /* Load operator */
 int loadTOperator( Grid *g, Params p );
@@ -120,7 +121,8 @@ int main( int argc, char** argv ){
 	if( error != 0 || output == NULL ){
 		if( output == NULL ) { printf("Couldn't open output file\n"); }
 		printf("Execution stopping, freeing memory\n");
-		cleanMemory( &g, output);
+		cleanMemory( &g );
+		fclose( output );
 	}
 
 	init_band_mat( &mMat, g.length-1, g.length, g.length );
@@ -148,7 +150,7 @@ int main( int argc, char** argv ){
 		}*/
 
 		/* Find next E */
-		calculateE( &g, p );
+		calculateE( &g, p, dt );
 		/* Calculate T-dE, saves it in g.T */
 		calculateB( &g );
 		/* Find next T */
@@ -159,11 +161,11 @@ int main( int argc, char** argv ){
 		swap_mem( &(g.E), &(g.E_next) );
 		swap_mem( &(g.T), &(g.T_next) );
 
-
 		temp_dt = dt;
 	}
 
-	cleanMemory( &g, output );
+	cleanMemory( &g );
+	fclose(output);
 	return 0;
 }
 
@@ -183,15 +185,12 @@ void swap_mem(double **array1, double **array2) {
 /*
 	Frees allocated memory
 */
-void cleanMemory( Grid *g, FILE* output ){
+void cleanMemory( Grid *g ){
 
 	free( g->T );
 	free( g->T_next );
 	free( g->E );
 	free( g->E_next );
-
-	if( output != NULL )
-		fclose( output );
 }
 
 /*
@@ -296,8 +295,9 @@ int initialiseGrid( Grid *g, Params p ){
 	g->T_next 	= (double*) malloc( sizeof( double ) *p.nX*p.nY );
 	g->E 		= (double*) malloc( sizeof( double ) *p.nX*p.nY );
 	g->E_next 	= (double*) malloc( sizeof( double ) *p.nX*p.nY );
+	g->dE		= (double*) malloc( sizeof( double ) *p.nX*p.nY );
 
-	if( g->T==NULL || g->T_next==NULL || g->E==NULL || g->E_next == NULL ){
+	if( g->T==NULL || g->T_next==NULL || g->E==NULL || g->E_next == NULL || g->dE ){
 		printf("The memory for an array could not be allocated in initialiseGrid\n");
 		return 1;
 	}
@@ -330,9 +330,9 @@ int initialiseGrid( Grid *g, Params p ){
 }
 
 /*
-	Finds next value of energy
+	Finds next value of energy and dE
 */
-void calculateE( Grid *g, Params p ){
+void calculateE( Grid *g, Params p, double dt ){
 
 	long i;
 	long N;
@@ -342,7 +342,8 @@ void calculateE( Grid *g, Params p ){
 
 	for( i=0; i<N; i++ ){
 		alpha = calculateAlpha( i, p, g->T );
-		g->E_next[i] = -1*g->E[i] * alpha;
+		g->dE[i] = -1*g->E[i] * alpha;
+		g->E_next[i] = g->E[i] * dt;
 	}
 }
 
@@ -351,7 +352,7 @@ void calculateE( Grid *g, Params p ){
 */
 double calculateAlpha( long i, Params p, double* T ){
 	double t = p.gamma / 2;
-	double tngh = tanh( (T[i]-p.T_c) / p.T_w );
+	double tngh = 1+tanh( (T[i]-p.T_c) / p.T_w );
 
 	return tngh * t;
 }
@@ -362,7 +363,7 @@ double calculateAlpha( long i, Params p, double* T ){
 void calculateB( Grid *g ){
 	long i;
 	for( i=0; i<g->length; i++){
-		g->T[i] = g->T[i] - g->E[i];
+		g->T[i] = g->T[i] - g->dE[i];
 	}
 }
 /*
