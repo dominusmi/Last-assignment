@@ -82,14 +82,15 @@ void calculateB( Grid *g );
 /* Same old */
 void swap_mem(double **array1, double **array2);
 
+/* Pritns results */
+void printResults( double t, Grid *g, FILE* output );
 
 /* ##### MAIN ##### */
 
 int main( int argc, char** argv ){
 
-	int i;
 	int error;
-	long iterations, temp;
+	long i, iterations, temp;
 	double cur_time, dt, temp_dt, next_diag;
 
 	FILE* output = NULL;
@@ -124,28 +125,27 @@ int main( int argc, char** argv ){
 
 	init_band_mat( &mMat, g.length-1, g.length, g.length );
 
-
 	for( i=0; i<g.length2; i++ ){
 		temp = floor((double)i/g.length);
 		setv(&mMat, temp, i%g.length, g.M[i]);
 	}
 
-	print_mat( &mMat );
 	/* Sets up time dependent variables for the simulation */
 	cur_time 	= 0.0;
 	dt 			= (p.t_f)*(p.t_f)/(g.dx*g.dy);
 	temp_dt 	= dt;
 	next_diag	= 0.0;
-	iterations 	= ceil( p.t_f / dt );
+	iterations 	= (long)ceil( p.t_f / dt );
+	iterations 	= 100;
 
+	printf("Iterations %ld\n", iterations);
 	/* #### MAIN LOOP #### */
 	for( i=0; i<iterations; i++ ){
-
 		/* If we're set to skip next diagnostic, temporarily modify dt */
-		if( cur_time + dt > next_diag){
+		/*if( cur_time + dt > next_diag){
 			temp_dt = next_diag - cur_time;
 			iterations++;
-		}
+		}*/
 
 		/* Find next E */
 		calculateE( &g, p );
@@ -153,6 +153,8 @@ int main( int argc, char** argv ){
 		calculateB( &g );
 		/* Find next T */
 		solve_Ax_eq_b( &mMat, g.T_next, g.T );
+
+		printResults( (double)i, &g, output );
 
 		swap_mem( &(g.E), &(g.E_next) );
 		swap_mem( &(g.T), &(g.T_next) );
@@ -553,6 +555,14 @@ void print_mat(band_mat *bmat) {
 			printf("%11.4g ",flval);
 		}
 		printf("\n");
+	}
+}
+
+/* Prints resutls */
+void printResults( double t, Grid *g, FILE* output ){
+	long i;
+	for( i=0; i<g->length2; i++){
+		fprintf( output, "%g %g %g\n", t, g->T_next[i], g->E_next[i] );
 	}
 }
 
