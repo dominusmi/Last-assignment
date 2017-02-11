@@ -230,6 +230,11 @@ void cleanMemory( Grid *g){
 
 }
 
+/* Transforms matrix to index coord (i,j) -> (i*nX, j) */
+long toIndex( long i, long j, long nx ){
+	return i*nx+j;
+}
+
 /*
 	Loads operator, including boundary conditions
 
@@ -239,7 +244,7 @@ int loadTOperator( Grid *g, Params p, double dt){
 	long i, length, row, index, index1, index2;
 	double cy, cx;
 
-	length = p.nY*p.nX;
+	length = g->length;
 
 	g->M = (double*) malloc( sizeof(double) * length * length );
 
@@ -259,28 +264,43 @@ int loadTOperator( Grid *g, Params p, double dt){
 
 	for( i=0; i<length; i++){
 
-		/* 	coefficients 4/3 and -1/3 come from qudratic boundary condition */
+		double diag = 1+2*cx+2*cy;
+		/* On diagonal, all the same */
+		index = toIndex(i,i, p.nX );
+		M[index] = diag;
 
 		/* 1st horizontal bdd */
 		if( i < p.nX && i!=0 && i != p.nX-1 ){
+
 			row		= i;
 			index1 	= p.nX + i;
-			g->M[ row * length + index1 ] = 1;
-			printf("%ld %ld\n", index1, index2);
+			index = row*length + index1;
+
+			g->M[ toIndex(i,i-1) ] 	= -cx;
+			g->M[ toIndex(i,i+1) ] 	= -cx;
+			g->M[ toIndex(i+1,i) ]	= -2*cy;
 		}
 
 		/* 1st vertical bdd */
 		else if( i%p.nX==0 && i!= 0 && i!=length-p.nX ){
 			row		= i;
 			index1 	= i+1;
-			g->M[ row * length + index1 ] = 1;
+			index = row*length + index1;
+
+			g->M[ index+1 ] 	= -2*cx;
+			g->M[ index+p.nX ]	= -cy;
+			g->M[ index-p.nX ]	= -cy;
 		}
 
 		/* 2nd horizontal bdd */
 		else if( i > p.nX*(p.nX-1)-1 && i!=length-p.nX && i != length-1 ){
 			row		= i;
 			index1 	= i-p.nX;
-			g->M[ row * length + index1 ] = 1;
+			index = row*length + index1;
+
+			g->M[ index-1 ] 	= -cx;
+			g->M[ index+1 ] 	= -cx;
+			g->M[ index-p.nX ]	= -2*cy;
 
 		}
 		/* 2nd vertical bdd */
@@ -297,10 +317,6 @@ int loadTOperator( Grid *g, Params p, double dt){
 			g->M[ index+1 ] 	= -cx;
 			g->M[ index+p.nX ]	= -cy;
 			g->M[ index-p.nX ]	= -cy;
-		}
-		else{
-			index = i*length+i;
-			g->M[index] = 1;
 		}
 
 
