@@ -91,7 +91,7 @@ void printResults( double t, Grid *g, FILE* output );
 int main( int argc, char** argv ){
 
 	int error;
-	long i, iterations, temp;
+	long i, j, iterations, temp;
 	double cur_time, dt, temp_dt, next_diag;
 
 	FILE* output = NULL;
@@ -134,8 +134,6 @@ int main( int argc, char** argv ){
 		setv(&mMat, temp, i%g.length, g.M[i]);
 	}
 
-
-
 	/* Sets up time dependent variables for the simulation */
 	cur_time 	= 0.0;
 	temp_dt 	= dt;
@@ -149,7 +147,6 @@ int main( int argc, char** argv ){
 	/* Need to be done for first loop to work coorectly */
 	calculateE( &g, p, dt );
 	calculateB( &g );
-
 	/* #### MAIN LOOP #### */
 	for( i=1; i<iterations; i++ ){
 		/* If we're set to skip next diagnostic, temporarily modify dt */
@@ -160,19 +157,34 @@ int main( int argc, char** argv ){
 
 
 		/* Find next T */
-		for( i=0; i<g.length; i++){
-			printf("%lf %lf\n", g.T_next[i], g.T[i]);
+
+		for( j=0; j<g.length; j++){
+			printf("%lf %lf %lf\n", g.T_next[j], g.T[j], g.dE[j]);
 		}
+
 		printf("-------------------\n");
 
-		solve_Ax_eq_b( &mMat, g.T_next, g.T );
-
-		for( i=0; i<g.length; i++){
-			printf("%lf %lf\n", g.T_next[i], g.T[i]);
+		int info = solve_Ax_eq_b( &mMat, g.T_next, g.T );
+		if( info == -1 || info == -6 || info == -9 ){
+			cleanMemory(&g);
+			fclose(output);
+			finalise_band_mat( &mMat );
+			printf("Matrix was singular, simulation shut down\n");
 		}
-		finalise_band_mat( &mMat );
-		cleanMemory( &g );
-		exit(1);
+
+		printf("-------------------\n");
+
+		for( j=0; j<g.length; j++){
+			printf("%lf %lf %lf\n", g.T_next[j], g.T[j], g.dE[j]);
+		}
+
+		if( i==2 ){
+
+			finalise_band_mat( &mMat );
+			cleanMemory( &g );
+			exit(1);
+		}
+
 		/* Prints results to file */
 		printResults( (double)i, &g, output );
 		/* Swap memories */
@@ -180,9 +192,9 @@ int main( int argc, char** argv ){
 		swap_mem( &(g.T), &(g.T_next) );
 
 		/* Find next E */
-		calculateE( &g, p, dt );
+		/*calculateE( &g, p, dt );*/
 		/* Calculate T-dE, saves it in g.T */
-		calculateB( &g );
+		/*calculateB( &g );*/
 
 		temp_dt = dt;
 	}
@@ -253,9 +265,7 @@ int loadTOperator( Grid *g, Params p, double dt){
 		if( i < p.nX && i!=0 && i != p.nX-1 ){
 			row		= i;
 			index1 	= p.nX + i;
-			index2	= 2*p.nX +i;
-			g->M[ row * length + index1 ] = 4.0/3;
-			g->M[ row * length + index2 ] = -1.0/3;
+			g->M[ row * length + index1 ] = 1;
 			printf("%ld %ld\n", index1, index2);
 		}
 
@@ -263,27 +273,21 @@ int loadTOperator( Grid *g, Params p, double dt){
 		else if( i%p.nX==0 && i!= 0 && i!=length-p.nX ){
 			row		= i;
 			index1 	= i+1;
-			index2	= i+2;
-			g->M[ row * length + index1 ] = 4.0/3;
-			g->M[ row * length + index2 ] = -1.0/3;
+			g->M[ row * length + index1 ] = 1;
 		}
 
 		/* 2nd horizontal bdd */
 		else if( i > p.nX*(p.nX-1)-1 && i!=length-p.nX && i != length-1 ){
 			row		= i;
 			index1 	= i-p.nX;
-			index2	= i-2*p.nX;
-			g->M[ row * length + index1 ] = 4.0/3;
-			g->M[ row * length + index2 ] = -1.0/3;
+			g->M[ row * length + index1 ] = 1;
 
 		}
 		/* 2nd vertical bdd */
 		else if( (i+1)%p.nX==0 && i!=0 && i!=length-1 && i!=p.nX-1){
 			row		= i;
 			index1 	= i-1;
-			index2	= i-2;
-			g->M[ row * length + index1 ] = 4.0/3;
-			g->M[ row * length + index2 ] = -1.0/3;
+			g->M[ row * length + index1 ] = 1;
 		}
 
 		else if( i!= 0 && i%p.nX != 0 && (i+1)%p.nX!=0 && i!=length-1 ){
@@ -293,6 +297,10 @@ int loadTOperator( Grid *g, Params p, double dt){
 			g->M[ index+1 ] 	= -cx;
 			g->M[ index+p.nX ]	= -cy;
 			g->M[ index-p.nX ]	= -cy;
+		}
+		else{
+			index = i*length+i;
+			g->M[index] = 1;
 		}
 
 
@@ -552,6 +560,8 @@ int solve_Ax_eq_b(band_mat *bmat, double *x, double *b) {
 	long nrhs = 1;
 	long ldab = bmat->nbands_low*2 + bmat->nbands_up + 1;
 	int info = LAPACKE_dgbsv( LAPACK_COL_MAJOR, bmat->ncol, bmat->nbands_low, bmat->nbands_up, nrhs, bmat->array_inv, ldab, bmat->ipiv, x, bmat->ncol);
+	for(i=0; i<bmat->ncol; i++)
+		printf("%lf \n", x[i]);
 	return info;
 }
 
