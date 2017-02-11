@@ -240,6 +240,7 @@ int loadTOperator( Grid *g, Params p, double dt){
 
 	index = 0;
 	index1=0;
+	index2=0;
 	row=0;
 	cx = dt / (g->dx*g->dx);
 	cy = dt / (g->dy*g->dy);
@@ -252,7 +253,9 @@ int loadTOperator( Grid *g, Params p, double dt){
 		if( i < p.nX && i!=0 && i != p.nX-1 ){
 			row		= i;
 			index1 	= p.nX + i;
-			g->M[ row * length + index1 ] = 1;
+			index2	= 2*p.nX +i;
+			g->M[ row * length + index1 ] = 4.0/3;
+			g->M[ row * length + index2 ] = -1.0/3;
 			printf("%ld %ld\n", index1, index2);
 		}
 
@@ -260,21 +263,27 @@ int loadTOperator( Grid *g, Params p, double dt){
 		else if( i%p.nX==0 && i!= 0 && i!=length-p.nX ){
 			row		= i;
 			index1 	= i+1;
-			g->M[ row * length + index1 ] = 1;
+			index2	= i+2;
+			g->M[ row * length + index1 ] = 4.0/3;
+			g->M[ row * length + index2 ] = -1.0/3;
 		}
 
 		/* 2nd horizontal bdd */
 		else if( i > p.nX*(p.nX-1)-1 && i!=length-p.nX && i != length-1 ){
 			row		= i;
 			index1 	= i-p.nX;
-			g->M[ row * length + index1 ] = 1;
+			index2	= i-2*p.nX;
+			g->M[ row * length + index1 ] = 4.0/3;
+			g->M[ row * length + index2 ] = -1.0/3;
 
 		}
 		/* 2nd vertical bdd */
 		else if( (i+1)%p.nX==0 && i!=0 && i!=length-1 && i!=p.nX-1){
 			row		= i;
 			index1 	= i-1;
-			g->M[ row * length + index1 ] = 1;
+			index2	= i-2;
+			g->M[ row * length + index1 ] = 4.0/3;
+			g->M[ row * length + index2 ] = -1.0/3;
 		}
 
 		else if( i!= 0 && i%p.nX != 0 && (i+1)%p.nX!=0 && i!=length-1 ){
