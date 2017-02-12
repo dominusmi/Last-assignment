@@ -78,7 +78,7 @@ void cleanMemory( Grid *g );
 int loadTOperator( Grid *g, Params p, double dt );
 
 /* Calculates B = T-dE */
-void calculateB( Grid *g );
+void calculateB( Grid *g, double dt );
 
 /* Same old */
 void swap_mem(double **array1, double **array2);
@@ -107,7 +107,7 @@ int main( int argc, char** argv ){
 	/* Initialise grid, set up T and E functions */
 	error = initialiseGrid( &g, p );
 
-	dt = p.t_d/10;
+	dt = p.t_d/100;
 	printf("%lf\n", dt);
 	/* Set up temperature operator */
 	error = loadTOperator( &g, p, dt);
@@ -120,33 +120,45 @@ int main( int argc, char** argv ){
 	printf("\n");
 
 
-	output = fopen( "output.dat", "w+" );
+	output = fopen( "output.txt", "w+" );
 
 	if( error != 0 || output == NULL ){
 		if( output == NULL ) { printf("Couldn't open output file\n"); }
 		printf("Execution stopping, freeing memory\n");
 	}
 
-	init_band_mat( &mMat, g.length-1, g.length, g.length );
+	init_band_mat( &mMat, 5, 5, g.length );
 
-	for( i=0; i<g.length2; i++ ){
-		temp = floor((double)i/g.length);
-		setv(&mMat, temp, i%g.length, g.M[i]);
+	temp = 0;
+	/* Set up the bands for band matrix */
+	for( i=0; i<g.length; i++ ){
+		long index = i*g.length+i;
+		for( j=-5; j<=5; j++){
+			if( i+j>=0 && i+j<g.length){
+				setv( &mMat, i, index%g.length+j, g.M[index+j] );
+			}
+		}
 	}
+
+	print_mat( &mMat );
+	/*cleanMemory(&g);
+	fclose(output);
+	finalise_band_mat( &mMat );
+	exit(1);*/
 
 	/* Sets up time dependent variables for the simulation */
 	cur_time 	= 0.0;
 	temp_dt 	= dt;
 	next_diag	= 0.0;
 	iterations 	= (long)ceil( p.t_f / dt );
-	iterations 	= 10;
-
+	iterations 	= 200;
+	j = 0;
 	printf("Iterations %ld\n", iterations);
 	printResults( 0, &g, output );
 
 	/* Need to be done for first loop to work coorectly */
 	calculateE( &g, p, dt );
-	calculateB( &g );
+	calculateB( &g, dt );
 	/* #### MAIN LOOP #### */
 	for( i=1; i<iterations; i++ ){
 		/* If we're set to skip next diagnostic, temporarily modify dt */
@@ -158,22 +170,24 @@ int main( int argc, char** argv ){
 
 		/* Find next T */
 
+		/*printf("BEFORE\n\n");
 		for( j=0; j<g.length; j++){
 			printf("%lf %lf %lf\n", g.T_next[j], g.T[j], g.dE[j]);
 		}
 
-		printf("-------------------\n");
+		printf("-------------------\n");*/
 
 		int info = solve_Ax_eq_b( &mMat, g.T_next, g.T );
-		if( info == -1 || info == -6 || info == -9 ){
+		if( info != 0 ){
 			cleanMemory(&g);
 			fclose(output);
 			finalise_band_mat( &mMat );
-			printf("Matrix was singular, simulation shut down\n");
+			printf("Lapacke returned an error: %d\n", info);
+			exit(1);
 		}
 
-		printf("-------------------\n");
-
+ 		/*printf("-------------------\n");
+		printf("AFTER\n\n");
 		for( j=0; j<g.length; j++){
 			printf("%lf %lf %lf\n", g.T_next[j], g.T[j], g.dE[j]);
 		}
@@ -182,8 +196,10 @@ int main( int argc, char** argv ){
 
 			finalise_band_mat( &mMat );
 			cleanMemory( &g );
+			fclose(output);
 			exit(1);
 		}
+		printf("-------------------\n");*/
 
 		/* Prints results to file */
 		printResults( (double)i, &g, output );
@@ -192,9 +208,9 @@ int main( int argc, char** argv ){
 		swap_mem( &(g.T), &(g.T_next) );
 
 		/* Find next E */
-		/*calculateE( &g, p, dt );*/
+		calculateE( &g, p, dt );
 		/* Calculate T-dE, saves it in g.T */
-		/*calculateB( &g );*/
+		calculateB( &g, dt );
 
 		temp_dt = dt;
 	}
@@ -266,26 +282,24 @@ int loadTOperator( Grid *g, Params p, double dt){
 
 		double diag = 1+2*cx+2*cy;
 		/* On diagonal, all the same */
-		index = toIndex(i,i, p.nX );
-		M[index] = diag;
+		index = i*length+i;
+		g->M[index] = diag;
 
 		/* 1st horizontal bdd */
 		if( i < p.nX && i!=0 && i != p.nX-1 ){
 
 			row		= i;
-			index1 	= p.nX + i;
-			index = row*length + index1;
+			index 	= row*length + i;
 
-			g->M[ toIndex(i,i-1) ] 	= -cx;
-			g->M[ toIndex(i,i+1) ] 	= -cx;
-			g->M[ toIndex(i+1,i) ]	= -2*cy;
+			g->M[ index-1 ] 	= -cx;
+			g->M[ index+1 ] 	= -cx;
+			g->M[ index+p.nX ]	= -2*cy;
 		}
 
 		/* 1st vertical bdd */
 		else if( i%p.nX==0 && i!= 0 && i!=length-p.nX ){
 			row		= i;
-			index1 	= i+1;
-			index = row*length + index1;
+			index = row*length + i;
 
 			g->M[ index+1 ] 	= -2*cx;
 			g->M[ index+p.nX ]	= -cy;
@@ -293,10 +307,9 @@ int loadTOperator( Grid *g, Params p, double dt){
 		}
 
 		/* 2nd horizontal bdd */
-		else if( i > p.nX*(p.nX-1)-1 && i!=length-p.nX && i != length-1 ){
+		else if( i > p.nY*(p.nX-1) && i!=length-p.nX-1 && i != length-1 ){
 			row		= i;
-			index1 	= i-p.nX;
-			index = row*length + index1;
+			index = row*length + i;
 
 			g->M[ index-1 ] 	= -cx;
 			g->M[ index+1 ] 	= -cx;
@@ -306,13 +319,15 @@ int loadTOperator( Grid *g, Params p, double dt){
 		/* 2nd vertical bdd */
 		else if( (i+1)%p.nX==0 && i!=0 && i!=length-1 && i!=p.nX-1){
 			row		= i;
-			index1 	= i-1;
-			g->M[ row * length + index1 ] = 1;
+			index = row*length + i;
+
+			g->M[ index-1 ] 	= -2*cx;
+			g->M[ index+p.nX ] 	= -cy;
+			g->M[ index-p.nX ]	= -cy;
 		}
 
-		else if( i!= 0 && i%p.nX != 0 && (i+1)%p.nX!=0 && i!=length-1 ){
+		else if( i%p.nX != 0 && (i+1)%p.nX!=0 && i!=length-1 ){
 			index = i*length+i;
-			g->M[ index ] 		= 1+2*cx+2*cy;
 			g->M[ index-1 ] 	= -cx;
 			g->M[ index+1 ] 	= -cx;
 			g->M[ index+p.nX ]	= -cy;
@@ -321,13 +336,25 @@ int loadTOperator( Grid *g, Params p, double dt){
 
 
 		/* Corners */
-		/*if( i == 0 ){
-			M[1]=0.5;
-			M[nX]=0.5;
+		if( i == 0 ){
+		 	g->M[i+1]	=-2*cx;
+			g->M[p.nX]	=-2*cy;
 		}
-		if( i == ny-1 ){
-			M[]
-		}*/
+		else if( i == p.nX-1 ){
+			index = i*length+i;
+			g->M[index-1]		=-2*cx;
+			g->M[index+p.nX]	=-2*cy;
+		}
+		else if( i == g->length-p.nX ){
+			index = i*length+i;
+			g->M[index+1]		=-2*cx;
+			g->M[index-p.nX]	=-2*cy;
+		}
+		else if( i == g->length-1 ){
+			index = i*length+i;
+			g->M[index-1]		=-2*cx;
+			g->M[index-p.nX]	=-2*cy;
+		}
 	}
 
 
@@ -369,7 +396,12 @@ int initialiseGrid( Grid *g, Params p ){
 	long y;
 	long index;
 	for( i=0; i<tot; i++ ){
-		fscanf( input, "%lf %lf", &tempT, &tempE );
+		int info = fscanf( input, "%lf %lf", &tempT, &tempE );
+
+		if( info != 2 ){
+			printf("There was an error reading coefficients.txt\n%d inputs were read instead of 2 in a single line\n", info);
+			exit(1);
+		}
 
 		x = i%p.nX;
 		y = floor((double)i/p.nX);
@@ -414,16 +446,16 @@ double calculateAlpha( long i, Params p, double* T ){
 	double t = p.gamma / 2;
 	double tngh = tanh( (T[i]-p.T_c) / p.T_w );
 
-	return tngh * t;
+	return (1+tngh) * t;
 }
 
 /*
 	Calculates B = T-de
 */
-void calculateB( Grid *g ){
+void calculateB( Grid *g, double dt ){
 	long i;
 	for( i=0; i<g->length; i++){
-		g->T[i] = g->T[i] - g->dE[i];
+		g->T[i] = g->T[i] - g->dE[i]*dt;
 	}
 }
 /*
@@ -523,6 +555,7 @@ int init_band_mat(band_mat *bmat, long nbands_lower, long nbands_upper, long n_c
 	return 1;
 };
 
+
 /* Finalise function: should free memory as required */
 void finalise_band_mat( band_mat *bmat) {
 	free( bmat->array );
@@ -575,9 +608,8 @@ int solve_Ax_eq_b(band_mat *bmat, double *x, double *b) {
 
 	long nrhs = 1;
 	long ldab = bmat->nbands_low*2 + bmat->nbands_up + 1;
+
 	int info = LAPACKE_dgbsv( LAPACK_COL_MAJOR, bmat->ncol, bmat->nbands_low, bmat->nbands_up, nrhs, bmat->array_inv, ldab, bmat->ipiv, x, bmat->ncol);
-	for(i=0; i<bmat->ncol; i++)
-		printf("%lf \n", x[i]);
 	return info;
 }
 
