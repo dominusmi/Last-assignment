@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -57,10 +58,10 @@ struct Grid{
 typedef struct Grid Grid;
 
 /* Loads parameters */
-int loadParams( Params *p, Params *cP, Grid *g, Grid *cG);
+int loadParams( Params *p, Grid *g);
 
 /* Loads E and T functions */
-int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG );
+int initialiseGrid( Grid *g, Params p );
 
 /* Loads coarse functions */
 int loadCoarseFunctions( Grid *g, Params p );
@@ -90,111 +91,92 @@ void printResults( double t, Grid *g, FILE* output );
 
 int main( int argc, char** argv ){
 
-	long i, j, iterations;
-	double cur_time, dt, temp_dt, next_diag, errorest;
+	int error;
+	long i, j, iterations, temp;
+	double cur_time, dt, temp_dt, next_diag;
 
 	FILE* output = NULL;
-	Params p, coarseP;
+	Params p;
 	Grid g;
-	Grid coarseG;
-	band_mat mMat, coarseMat;
+	band_mat mMat;
 
 	/* Load parameters */
-	loadParams( &p, &coarseP, &g, &coarseG);
+	error = loadParams( &p, &g);
+	g.length 	= p.nX*p.nY;
+	g.length2 	= g.length*g.length;
 
 	/* Initialise grid, set up T and E functions */
-	initialiseGrid( &g, &coarseG, p, coarseP );
+	error = initialiseGrid( &g, p );
 
-
-	/* Takes dt = min( t_d, (dx)^2/2, (dy)^2/2, 0.1 ) */
-	dt = p.t_d;
-	if( (g.dx*g.dx)/2 < dt )
-		dt = (g.dx*g.dx)/2;
-	if( (g.dy*g.dy)/2 < dt )
-		dt = (g.dy*g.dy)/2;
-	if( 0.1 < dt )
-		dt = 0.1;
-
+	dt = p.t_d/10;
 	printf("%lf\n", dt);
 	/* Set up temperature operator */
-	loadTOperator( &g, p, dt);
-	loadTOperator( &coarseG, coarseP, dt);
+	error = loadTOperator( &g, p, dt);
 
-
-	/* Print matrix for debug */
 	for( i=0; i<g.length2; i++){
 		if( i%(p.nY*p.nX) == 0 )
 			printf("\n");
 		printf("%.2lf ", g.M[i] );
 	}
 	printf("\n");
-	for( i=0; i<coarseG.length2; i++){
-		if( i%(coarseP.nY*coarseP.nX) == 0 )
-			printf("\n");
-		printf("%.2lf ", coarseG.M[i] );
-	}
-	printf("\n");
 
 
 	output = fopen( "output.txt", "w+" );
 
-	if( output == NULL ){
+	if( error != 0 || output == NULL ){
 		if( output == NULL ) { printf("Couldn't open output file\n"); }
 		printf("Execution stopping, freeing memory\n");
 	}
 
-	init_band_mat( &mMat, p.nX, p.nX, g.length );
-	init_band_mat( &coarseMat, coarseP.nX, coarseP.nX, coarseG.length );
+	init_band_mat( &mMat, 5, 5, g.length );
 
+	temp = 0;
 	/* Set up the bands for band matrix */
 	for( i=0; i<g.length; i++ ){
 		long index = i*g.length+i;
-		for( j=-p.nX; j<=p.nX; j++){
+		for( j=-5; j<=5; j++){
 			if( i+j>=0 && i+j<g.length){
 				setv( &mMat, i, index%g.length+j, g.M[index+j] );
 			}
 		}
 	}
 
-	/* Set up the bands for coarse band matrix */
-	for( i=0; i<coarseG.length; i++ ){
-		long index = i*coarseG.length+i;
-		for( j=-coarseP.nX; j<=coarseP.nX; j++){
-			if( i+j>=0 && i+j<coarseG.length){
-				setv( &coarseMat, i, index%coarseG.length+j, coarseG.M[index+j] );
-			}
-		}
-	}
-
+	print_mat( &mMat );
+	/*cleanMemory(&g);
+	fclose(output);
+	finalise_band_mat( &mMat );
+	exit(1);*/
 
 	/* Sets up time dependent variables for the simulation */
 	cur_time 	= 0.0;
 	temp_dt 	= dt;
-	next_diag	= p.t_d;
+	next_diag	= 0.0;
+	iterations 	= (long)ceil( p.t_f / dt );
 	iterations 	= 200;
 	j = 0;
-
-
-	/* Needs to be done for first loop to work coorectly */
+	printf("Iterations %ld\n", iterations);
 	printResults( 0, &g, output );
+
+	/* Need to be done for first loop to work coorectly */
 	calculateE( &g, p, dt );
 	calculateB( &g, dt );
-
-	calculateE( &coarseG, coarseP, dt );
-	calculateB( &coarseG, dt );
-
-
 	/* #### MAIN LOOP #### */
-	while( next_diag <= p.t_f ){
+	for( i=1; i<iterations; i++ ){
 		/* If we're set to skip next diagnostic, temporarily modify dt */
-		if( cur_time + dt > next_diag){
+		/*if( cur_time + dt > next_diag){
 			temp_dt = next_diag - cur_time;
-		}
+			iterations++;
+		}*/
 
-		/* Update current time */
-		cur_time += temp_dt;
 
 		/* Find next T */
+
+		/*printf("BEFORE\n\n");
+		for( j=0; j<g.length; j++){
+			printf("%lf %lf %lf\n", g.T_next[j], g.T[j], g.dE[j]);
+		}
+		printf("-------------------\n");*/
+
 		int info = solve_Ax_eq_b( &mMat, g.T_next, g.T );
 		if( info != 0 ){
 			cleanMemory(&g);
@@ -203,66 +185,42 @@ int main( int argc, char** argv ){
 			printf("Lapacke returned an error: %d\n", info);
 			exit(1);
 		}
-		solve_Ax_eq_b( &coarseMat, coarseG.T_next, coarseG.T );
 
+ 		/*printf("-------------------\n");
+		printf("AFTER\n\n");
+		for( j=0; j<g.length; j++){
+			printf("%lf %lf %lf\n", g.T_next[j], g.T[j], g.dE[j]);
+		}
+		if( i==2 ){
+			finalise_band_mat( &mMat );
+			cleanMemory( &g );
+			fclose(output);
+			exit(1);
+		}
+		printf("-------------------\n");*/
 
 		/* Prints results to file */
-		if( abs(cur_time - next_diag) < 0.0000001  ){
-			printResults( cur_time, &coarseG, output );
-			next_diag = cur_time + p.t_d;
-		}
-
+		printResults( (double)i, &g, output );
 		/* Swap memories */
 		swap_mem( &(g.E), &(g.E_next) );
 		swap_mem( &(g.T), &(g.T_next) );
-		swap_mem( &(coarseG.E), &(coarseG.E_next) );
-		swap_mem( &(coarseG.T), &(coarseG.T_next) );
 
 		/* Find next E */
 		calculateE( &g, p, dt );
-		calculateE( &coarseG, coarseP, dt );
 		/* Calculate T-dE, saves it in g.T */
 		calculateB( &g, dt );
-		calculateB( &coarseG, dt );
-
 
 		temp_dt = dt;
 	}
 
-	/* Calculate error rest */
-	errorest = 0;
-	long x,y,index, indexC;
-	for( i=0; i<g.length; i+=2 ){
-
-		x = i%p.nX;
-		y = floor((double)i/p.nX);
-
-		if( x%2 == 0 && y%2 == 0 ){
-			index 	= x   +  y*p.nX;
-			indexC 	= x/2 + (y/2)*coarseP.nX;
-			printf("Coarse, g: %lf %lf\n",coarseG.T[indexC], g.T[index]);
-			errorest += coarseG.T[indexC]-g.T[index];
-		}
-	}
-	errorest = errorest*errorest;
-	FILE* error = fopen("errorest.txt","w+");
-	fprintf(error, "%lf", errorest);
-	fclose(error);
-
-
-	/* Clean memory */
 	fclose( output );
 	finalise_band_mat( &mMat );
-	cleanMemory( &g );
-	finalise_band_mat( &coarseMat );
-	cleanMemory( &coarseG );
-	/* Clean exit */
+	cleanMemory( &g);
 	return 0;
 }
 
 /*
     Swap pointers for efficient value exchange
-
     @param array1:  pointer to be swapped
     @param array2:  -
 */
@@ -292,7 +250,6 @@ long toIndex( long i, long j, long nx ){
 
 /*
 	Loads operator, including boundary conditions
-
 */
 int loadTOperator( Grid *g, Params p, double dt){
 
@@ -303,10 +260,8 @@ int loadTOperator( Grid *g, Params p, double dt){
 
 	g->M = (double*) malloc( sizeof(double) * length * length );
 
-	if( g->M == NULL ){
-		printf("Could not allocate memory for the temperature operator\n");
-		exit(1);
-	}
+	if( g->M == NULL )
+		return 1;
 
 	for( i=0; i<length*length; i++){
 		g->M[i] = 0.0;
@@ -406,7 +361,7 @@ int loadTOperator( Grid *g, Params p, double dt){
 	Sets up the arrays T,T_next, E, E_next.
 	Initialises T & T_next to same values, and E & E_next to same values
 */
-int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
+int initialiseGrid( Grid *g, Params p ){
 
 	int i;
 	double tempT, tempE;
@@ -424,18 +379,6 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 		return 1;
 	}
 
-	cG->T 		= (double*) malloc( sizeof( double ) *cG->length );
-	cG->T_next 	= (double*) malloc( sizeof( double ) *cG->length );
-	cG->E 		= (double*) malloc( sizeof( double ) *cG->length );
-	cG->E_next 	= (double*) malloc( sizeof( double ) *cG->length );
-	cG->dE 		= (double*) malloc( sizeof( double ) *cG->length );
-
-	if( cG->T==NULL || cG->T_next==NULL || cG->E==NULL || cG->E_next == NULL ){
-		printf("The memory for an array could not be allocated in initialiseGrid\n");
-		return 1;
-	}
-
-
 	/* Open file & error check */
 	input = fopen("coefficients.txt", "r");
 	if( input == NULL ){
@@ -444,10 +387,11 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 	}
 
 	/* Loop through all points, array per array */
+	long tot = p.nX*p.nY;
 	long x;
 	long y;
 	long index;
-	for( i=0; i<g->length; i++ ){
+	for( i=0; i<tot; i++ ){
 		int info = fscanf( input, "%lf %lf", &tempT, &tempE );
 
 		if( info != 2 ){
@@ -465,16 +409,6 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 		g->E[index] 		= tempE;
 		g->E_next[index]	= tempE;
 		g->dE[index]		= 0;
-
-		/* Only keep pair indeces in both x and y direction */
-		if( x%2 == 0 && y%2 == 0){
-			index = x/2 + (y/2)*pG.nX;
-			cG->T[index] 		= tempT;
-			cG->T_next[index] = tempT;
-			cG->E[index] 		= tempE;
-			cG->E_next[index]	= tempE;
-			cG->dE[index]		= 0;
-		}
 	}
 
 	fclose( input );
@@ -522,10 +456,9 @@ void calculateB( Grid *g, double dt ){
 }
 /*
 	Loads parameters from input.txt
-
 	@param p: structure to load
 */
-int loadParams( Params *p, Params *cP, Grid *g, Grid *cG){
+int loadParams( Params *p, Grid *g ){
 	int i;
 	int error;
 	long tempL;
@@ -558,28 +491,20 @@ int loadParams( Params *p, Params *cP, Grid *g, Grid *cG){
 			return 1;
 		}
 		switch(i){
-			case 0: p->t_f 	= tempD; cP->t_f 	= tempD; 		break;
-			case 1: p->t_d 	= tempD; cP->t_d  	= tempD; 		break;
-			case 2: p->nX 	= tempL; cP->nX 	= (tempL+1)/2; 	break;
-			case 3: p->nY 	= tempL; cP->nY 	= (tempL+1)/2; 	break;
-			case 4: p->x_r 	= tempD; cP->x_r 	= tempD;		break;
-			case 5: p->y_h 	= tempD; cP->y_h 	= tempD;		break;
-			case 6: p->gamma= tempD; cP->gamma	= tempD;		break;
-			case 7: p->T_c 	= tempD; cP->T_c 	= tempD;		break;
-			case 8: p->T_w 	= tempD; cP->T_w 	= tempD; 		break;
+			case 0: p->t_f 	= tempD; break;
+			case 1: p->t_d 	= tempD; break;
+			case 2: p->nX 	= tempL; break;
+			case 3: p->nY 	= tempL; break;
+			case 4: p->x_r 	= tempD; break;
+			case 5: p->y_h 	= tempD; break;
+			case 6: p->gamma= tempD; break;
+			case 7: p->T_c 	= tempD; break;
+			case 8: p->T_w 	= tempD; break;
 		}
 	}
 	g->dx = (p->x_r) / (double)(p->nX-1);
 	g->dy = (p->y_h) / (double)(p->nY-1);
 
-	cG->dx = (cP->x_r) / (double)(cP->nX-1);
-	cG->dy = (cP->y_h) / (double)(cP->nY-1);
-
-	g->length 	= p->nX*p->nY;
-	g->length2 	= g->length*g->length;
-
-	cG->length 	= cP->nX*cP->nY;
-	cG->length2 = cG->length*cG->length;
 
 	/* Bad parameters handling */
 	if( p->t_f <= 0 ){
