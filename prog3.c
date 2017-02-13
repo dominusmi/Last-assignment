@@ -84,7 +84,7 @@ void calculateB( Grid *g, double dt );
 void swap_mem(double **array1, double **array2);
 
 /* Pritns results */
-void printResults( double t, Grid *g, FILE* output );
+void printResults( double t, Grid *g, FILE* output, long nx );
 
 /* ##### MAIN ##### */
 
@@ -176,7 +176,7 @@ int main( int argc, char** argv ){
 
 
 	/* Needs to be done for first loop to work coorectly */
-	printResults( 0, &g, output );
+	printResults( 0, &g, output, p.nX );
 	calculateE( &g, p, dt );
 	calculateB( &g, dt );
 
@@ -208,7 +208,7 @@ int main( int argc, char** argv ){
 
 		/* Prints results to file */
 		if( abs(cur_time - next_diag) < 0.0000001  ){
-			printResults( cur_time, &coarseG, output );
+			printResults( cur_time, &g, output, p.nX );
 			next_diag = cur_time + p.t_d;
 		}
 
@@ -235,7 +235,7 @@ int main( int argc, char** argv ){
 	for( i=0; i<g.length; i+=2 ){
 
 		x = i%p.nX;
-		y = floor((double)i/p.nX);
+		y = (i-x)/p.nX;
 
 		if( x%2 == 0 && y%2 == 0 ){
 			index 	= x   +  y*p.nX;
@@ -456,7 +456,7 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 		}
 
 		x = i%p.nX;
-		y = floor((double)i/p.nX);
+		y = (i-x)/p.nX;
 
 		index = x+y*p.nX;
 
@@ -724,10 +724,12 @@ void print_mat(band_mat *bmat) {
 }
 
 /* Prints resutls */
-void printResults( double t, Grid *g, FILE* output ){
-	long i;
+void printResults( double t, Grid *g, FILE* output, long nx ){
+	long i, x, y;
 	for( i=0; i<g->length; i++){
-		fprintf( output, "%g %g %g\n", t, g->T_next[i], g->E_next[i] );
+		x = i%nx;
+		y = (i-x)/nx;
+		fprintf( output, "%g %ld %ld %g %g\n", t, x, y, g->T_next[i], g->E_next[i] );
 		fflush( output );
 	}
 }
