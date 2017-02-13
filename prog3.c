@@ -109,8 +109,6 @@ int main( int argc, char** argv ){
 	initialiseGrid( &g, &coarseG, p, coarseP );
 	output = fopen( "output.txt", "w+" );
 
-	printResults( 0, &coarseG, output, coarseP.nX );
-	fclose( output );
 
 	/* Takes dt = min( t_d, (dx)^2/2, (dy)^2/2, 0.1 ) */
 	dt = p.t_d;
@@ -452,7 +450,7 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 	int keep=0;
 	long x;
 	long y;
-	long index, index1, index2;
+	long index;
 	for( i=0; i<g->length; i++ ){
 		int info = fscanf( input, "%lf %lf", &tempT, &tempE );
 
@@ -472,10 +470,8 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 		g->E_next[index]	= tempE;
 		g->dE[index]		= 0;
 
-		/*
-			Only keep pair indeces in both x and y direction
-			Also handle initial condition on non coarse grid points
-		*/
+		/* Only keep pair indeces in both x and y direction
+			Also handle initial condition on non coarse grid points */
 		if( x%2 == 0 && y%2 == 0){
 			index = x/2 + (y/2)*pG.nX;
 			keep=1;
