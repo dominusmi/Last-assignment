@@ -409,7 +409,7 @@ int loadTOperator( Grid *g, Params p, double dt){
 	Sets up the arrays T,T_next, E, E_next.
 	Initialises T & T_next to same values, and E & E_next to same values
 */
-int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
+int initialiseGrid( Grid *g, Grid *cG, Params p, Params cP ){
 
 	int i;
 	double tempT, tempE;
@@ -470,34 +470,70 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 		g->E_next[index]	= tempE;
 		g->dE[index]		= 0;
 
-		/* Only keep pair indeces in both x and y direction
-			Also handle initial condition on non coarse grid points */
-		if( x%2 == 0 && y%2 == 0){
-			index = x/2 + (y/2)*pG.nX;
-			keep=1;
-		}else{
-			if( tempT >0 || tempE>0 ){
-				if( x%2==0 ){
-					index = x/2 + ((y-1)/2)*pG.nX;
-					if( index < 0 )
-						index = x/2 + ((y+1)/2)*pG.nX;
-				}else if( y%2 == 0 ){
-					index = (x-1)/2 + (y/2)*pG.nX;
-					if( index < 0 )
-						index = (x+1)/2 + (y/2)*pG.nX;
-				}
-				keep=1;
-			}
-		}
-		if( keep ){
-			cG->T[index] 		+= tempT;
-			cG->T_next[index]   += tempT;
-			cG->E[index] 		+= tempE;
-			cG->E_next[index]	+= tempE;
-			cG->dE[index]		= 0;
-		}
-		keep=0;
+
+		printf("%g ", g->T[ i ]);
+		if( (i+1)%p.nX == 0 )
+			printf("\n");
 	}
+
+
+	/*
+		Sets the coarse grid initial values.
+		Takes T[i] = T[i] + average( top, bottom, left & right neighbours )
+		Only counts the neighbours which are defined in the average
+		Similarly for E
+	*/
+	int n;
+	double bottomE, topE, rightE, leftE;
+	double bottomT, topT, rightT, leftT;
+	keep=0;
+	for( i=0; i<cG->length; i++ ){
+		n=0;
+		bottomE=0; topE=0; rightE=0; leftE=0;
+		bottomT=0; topT=0; rightT=0; leftT=0;
+
+		x = i%cP.nX;
+		y = (i-x)/cP.nX;
+
+		if( x != 0 ){
+			index = 2*x-1 + 2*y*p.nX;
+			leftE = g->E[ index ];
+			leftT = g->T[ index ];
+			n++;
+		}
+		if( y != 0 ){
+			index = 2*x + 2*(y-1)*p.nX;
+			topE = g->E[ index ];
+			topT = g->T[ index ];
+			n++;
+		}
+		if( x != cP.nX-1 ){
+			index = 2*x+1 + 2*y*p.nX;
+			rightE = g->E[ index ];
+			rightT = g->T[ index ];
+			n++;
+		}
+		if( y != cP.nY-1 ){
+			index = 2*x+2*(y+1)*p.nX;
+			bottomE = g->E[ index ];
+			bottomT = g->T[ index ];
+			n++;
+		}
+		index = 2*x + 2*y*p.nX;
+		cG->T[ i ] 		= (topT+rightT+leftT+bottomT)/n + g->T[index];
+		cG->T_next[ i ] = (topT+rightT+leftT+bottomT)/n+ g->T[index];
+
+		cG->E[ i ] 		= (topE+rightE+leftE+bottomE)/n+ g->E[index];
+		cG->E_next[ i ] = (topE+rightE+leftE+bottomE)/n+ g->E[index];
+		cG->dE[ i ] 	= 0;
+
+
+		printf("%g ", cG->T[ i ]);
+		if( (i+1)%cP.nX == 0 )
+			printf("\n");
+	}
+
+
 
 	fclose( input );
 	return 0;
