@@ -119,7 +119,6 @@ int main( int argc, char** argv ){
 	if( 0.1 < dt )
 		dt = 0.1;
 
-	printf("%lf\n", dt);
 	/* Set up temperature operator */
 	loadTOperator( &g, p, dt);
 	loadTOperator( &coarseG, coarseP, dt);
@@ -131,8 +130,8 @@ int main( int argc, char** argv ){
 			printf("\n");
 		printf("%.2lf ", g.M[i] );
 	}
-	printf("\n");
-	for( i=0; i<coarseG.length2; i++){
+	printf("\n");*/
+	/*for( i=0; i<coarseG.length2; i++){
 		if( i%(coarseP.nY*coarseP.nX) == 0 )
 			printf("\n");
 		printf("%.2lf ", coarseG.M[i] );
@@ -160,6 +159,8 @@ int main( int argc, char** argv ){
 			}
 		}
 	}
+
+	print_mat( &mMat );
 
 	/* Set up the bands for coarse band matrix */
 	for( i=0; i<coarseG.length; i++ ){
@@ -447,7 +448,6 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params cP ){
 	}
 
 	/* Loop through all points, array per array */
-	int keep=0;
 	long x;
 	long y;
 	long index;
@@ -470,10 +470,6 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params cP ){
 		g->E_next[index]	= tempE;
 		g->dE[index]		= 0;
 
-
-		printf("%g ", g->T[ i ]);
-		if( (i+1)%p.nX == 0 )
-			printf("\n");
 	}
 
 
@@ -486,7 +482,6 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params cP ){
 	int n;
 	double bottomE, topE, rightE, leftE;
 	double bottomT, topT, rightT, leftT;
-	keep=0;
 	for( i=0; i<cG->length; i++ ){
 		n=0;
 		bottomE=0; topE=0; rightE=0; leftE=0;
@@ -527,10 +522,6 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params cP ){
 		cG->E_next[ i ] = (topE+rightE+leftE+bottomE)/n+ g->E[index];
 		cG->dE[ i ] 	= 0;
 
-
-		printf("%g ", cG->T[ i ]);
-		if( (i+1)%cP.nX == 0 )
-			printf("\n");
 	}
 
 
