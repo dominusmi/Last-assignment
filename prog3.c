@@ -107,7 +107,10 @@ int main( int argc, char** argv ){
 
 	/* Initialise grid, set up T and E functions */
 	initialiseGrid( &g, &coarseG, p, coarseP );
+	output = fopen( "output.txt", "w+" );
 
+	printResults( 0, &coarseG, output, coarseP.nX );
+	fclose( output );
 
 	/* Takes dt = min( t_d, (dx)^2/2, (dy)^2/2, 0.1 ) */
 	dt = p.t_d;
@@ -139,7 +142,7 @@ int main( int argc, char** argv ){
 	printf("\n");*/
 
 
-	output = fopen( "output.txt", "w+" );
+
 
 	if( output == NULL ){
 		printf("Couldn't open output file\n");
@@ -446,9 +449,10 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 	}
 
 	/* Loop through all points, array per array */
+	int keep=0;
 	long x;
 	long y;
-	long index;
+	long index, index1, index2;
 	for( i=0; i<g->length; i++ ){
 		int info = fscanf( input, "%lf %lf", &tempT, &tempE );
 
@@ -468,15 +472,35 @@ int initialiseGrid( Grid *g, Grid *cG, Params p, Params pG ){
 		g->E_next[index]	= tempE;
 		g->dE[index]		= 0;
 
-		/* Only keep pair indeces in both x and y direction */
+		/*
+			Only keep pair indeces in both x and y direction
+			Also handle initial condition on non coarse grid points
+		*/
 		if( x%2 == 0 && y%2 == 0){
 			index = x/2 + (y/2)*pG.nX;
-			cG->T[index] 		= tempT;
-			cG->T_next[index] = tempT;
-			cG->E[index] 		= tempE;
-			cG->E_next[index]	= tempE;
+			keep=1;
+		}else{
+			if( tempT >0 || tempE>0 ){
+				if( x%2==0 ){
+					index = x/2 + ((y-1)/2)*pG.nX;
+					if( index < 0 )
+						index = x/2 + ((y+1)/2)*pG.nX;
+				}else if( y%2 == 0 ){
+					index = (x-1)/2 + (y/2)*pG.nX;
+					if( index < 0 )
+						index = (x+1)/2 + (y/2)*pG.nX;
+				}
+				keep=1;
+			}
+		}
+		if( keep ){
+			cG->T[index] 		+= tempT;
+			cG->T_next[index]   += tempT;
+			cG->E[index] 		+= tempE;
+			cG->E_next[index]	+= tempE;
 			cG->dE[index]		= 0;
 		}
+		keep=0;
 	}
 
 	fclose( input );
