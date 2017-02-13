@@ -90,7 +90,7 @@ void printResults( double t, Grid *g, FILE* output, long nx );
 
 int main( int argc, char** argv ){
 
-	long i, j, iterations;
+	long i, j;
 	double cur_time, dt, temp_dt, next_diag, errorest;
 
 	FILE* output = NULL;
@@ -100,7 +100,10 @@ int main( int argc, char** argv ){
 	band_mat mMat, coarseMat;
 
 	/* Load parameters */
-	loadParams( &p, &coarseP, &g, &coarseG);
+	if ( loadParams( &p, &coarseP, &g, &coarseG) ){
+		printf("Simulation ended\n");
+		exit(1);
+	}
 
 	/* Initialise grid, set up T and E functions */
 	initialiseGrid( &g, &coarseG, p, coarseP );
@@ -122,7 +125,7 @@ int main( int argc, char** argv ){
 
 
 	/* Print matrix for debug */
-	for( i=0; i<g.length2; i++){
+	/*for( i=0; i<g.length2; i++){
 		if( i%(p.nY*p.nX) == 0 )
 			printf("\n");
 		printf("%.2lf ", g.M[i] );
@@ -133,14 +136,15 @@ int main( int argc, char** argv ){
 			printf("\n");
 		printf("%.2lf ", coarseG.M[i] );
 	}
-	printf("\n");
+	printf("\n");*/
 
 
 	output = fopen( "output.txt", "w+" );
 
 	if( output == NULL ){
-		if( output == NULL ) { printf("Couldn't open output file\n"); }
+		printf("Couldn't open output file\n");
 		printf("Execution stopping, freeing memory\n");
+		cleanMemory( &g );
 	}
 
 	init_band_mat( &mMat, p.nX, p.nX, g.length );
@@ -171,8 +175,6 @@ int main( int argc, char** argv ){
 	cur_time 	= 0.0;
 	temp_dt 	= dt;
 	next_diag	= p.t_d;
-	iterations 	= 200;
-	j = 0;
 
 
 	/* Needs to be done for first loop to work coorectly */
@@ -207,7 +209,7 @@ int main( int argc, char** argv ){
 
 
 		/* Prints results to file */
-		if( abs(cur_time - next_diag) < 0.0000001  ){
+		if( fabs(cur_time - next_diag) < 0.00001  ){
 			printResults( cur_time, &g, output, p.nX );
 			next_diag = cur_time + p.t_d;
 		}
@@ -221,7 +223,7 @@ int main( int argc, char** argv ){
 		/* Find next E */
 		calculateE( &g, p, dt );
 		calculateE( &coarseG, coarseP, dt );
-		/* Calculate T-dE, saves it in g.T */
+		/* Calculate b for Ax=b, b=T-dt*dE, saves it in g.T */
 		calculateB( &g, dt );
 		calculateB( &coarseG, dt );
 
@@ -240,11 +242,11 @@ int main( int argc, char** argv ){
 		if( x%2 == 0 && y%2 == 0 ){
 			index 	= x   +  y*p.nX;
 			indexC 	= x/2 + (y/2)*coarseP.nX;
-			printf("Coarse, g: %lf %lf\n",coarseG.T[indexC], g.T[index]);
 			errorest += coarseG.T[indexC]-g.T[index];
 		}
 	}
 	errorest = errorest*errorest;
+	errorest /= coarseG.length;
 	FILE* error = fopen("errorest.txt","w+");
 	fprintf(error, "%lf", errorest);
 	fclose(error);
@@ -590,15 +592,16 @@ int loadParams( Params *p, Params *cP, Grid *g, Grid *cG){
 		printf("Error: diagnostic timestep must be >0\n");
 		return 1;
 	}
-	else if( p->gamma <= 0 ){
-		printf("Error: burn time constant\n");
+	else if( p->gamma < 0 ){
+		printf("Error: burn time constant < 0\n");
 		return 1;
 	}
 	else if( p->T_c <= 0 ){
 		printf("Warning: ignition temperature is not >0, the simulation will continue in case this was purposefully done\n");
 	}
-	else if( p->T_c <= 0 ){
-		printf("Warning: ignition temperature cutoff width is not >0, the simulation will continue in case this was purposefully done\n");
+	else if( p->T_w <= 0 ){
+		printf("Warning: ignition temperature cutoff width is not >0\n");
+		return 1;
 	}
 	/* Clean exit */
 	fclose( input );
@@ -729,7 +732,7 @@ void printResults( double t, Grid *g, FILE* output, long nx ){
 	for( i=0; i<g->length; i++){
 		x = i%nx;
 		y = (i-x)/nx;
-		fprintf( output, "%g %ld %ld %g %g\n", t, x, y, g->T_next[i], g->E_next[i] );
+		fprintf( output, "%11.4g %11ld %11ld %11.4g %11.4g\n", t, x, y, g->T_next[i], g->E_next[i] );
 		fflush( output );
 	}
 }
